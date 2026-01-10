@@ -63,7 +63,7 @@ The app has multiple protections that must be bypassed:
 ### Frida Command
 
 ```bash
-frida -D 127.0.0.1:6555 -f com.kohler.hermoth -l scripts/ssl_bypass.js
+frida -D 127.0.0.1:6555 -f com.kohler.hermoth -l scripts/frida_ssl_bypass.js
 ```
 
 Key: Use spawn mode (`-f`) to hook before app initialization.
@@ -137,7 +137,7 @@ Tried patching APK with frida-gadget but app has integrity checking. Frida serve
 
 | File | Purpose |
 |------|---------|
-| `scripts/ssl_bypass.js` | Frida SSL/root bypass script |
+| `scripts/frida_ssl_bypass.js` | Frida SSL/root bypass script |
 | `scripts/test_quick_dirty.py` | API test script |
 | `scripts/comprehensive_apk_analysis.py` | APK string extraction |
 | `apk_analysis_results.json` | Extracted APK data |

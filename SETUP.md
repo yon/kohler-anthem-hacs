@@ -192,7 +192,7 @@ The Kohler Konnect app has **aggressive protection** that must be bypassed:
    - Checks SystemProperties for qemu/goldfish/genymotion
    - Checks TelephonyManager for missing carrier info
 
-**Our Frida script (`scripts/ssl_bypass.js`) bypasses ALL THREE layers:**
+**Our Frida script (`scripts/frida_ssl_bypass.js`) bypasses ALL THREE layers:**
 - Spoofs Build properties to appear as a Samsung Galaxy S21
 - Hooks the obfuscated `Is.b` class to defeat all root checks
 - Hooks File.exists/canRead/etc. to hide root paths
@@ -317,7 +317,7 @@ This starts mitmproxy on port 8080. Press **ENTER** when prompted.
 
 In a **third terminal**, launch the app with our Frida bypass script:
 ```bash
-frida -U -f com.kohler.hermoth -l scripts/ssl_bypass.js
+frida -U -f com.kohler.hermoth -l scripts/frida_ssl_bypass.js
 ```
 
 This:
@@ -537,7 +537,7 @@ The app detected root/emulator. Check the Frida terminal output:
 
 1. **Missing bypass messages** - The script didn't inject properly. Try:
    ```bash
-   frida -U -f com.kohler.hermoth -l scripts/ssl_bypass.js --no-pause
+   frida -U -f com.kohler.hermoth -l scripts/frida_ssl_bypass.js --no-pause
    ```
 
 2. **"Is.b not found"** - Kohler updated their obfuscation. The root detection class name changed. Check `docs/REVERSE_ENGINEERING.md` for how to find the new class name.
