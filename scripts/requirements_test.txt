@@ -1,0 +1,4 @@
+# Requirements for quick test script
+msal>=1.24.0
+aiohttp>=3.8.0
+azure-iot-device>=2.12.0

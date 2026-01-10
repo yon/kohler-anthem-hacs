@@ -1,0 +1,8 @@
+{
+  "name": "Kohler Anthem Digital Shower",
+  "country": ["US", "CA"],
+  "domains": ["climate", "switch", "sensor"],
+  "homeassistant": "2024.1.0",
+  "iot_class": "Local Polling",
+  "render_readme": true
+}
