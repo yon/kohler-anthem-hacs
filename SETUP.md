@@ -170,13 +170,38 @@ If client_id or api_resource extraction fails:
 
 You'll capture the APIM key by intercepting traffic from the Kohler app. This requires:
 - Mitmproxy running on your Mac
-- Android **emulator** (Genymotion) - physical devices won't work due to SSL pinning
-- Frida to bypass SSL pinning
+- Android **emulator** (Genymotion) - physical devices won't work
+- Frida with our bypass script
 - Mitmproxy's CA certificate installed on the emulator
 
-**Why an emulator?** The Kohler app uses SSL certificate pinning, which prevents mitmproxy from intercepting traffic. We use Frida to bypass this, but Frida requires either:
-- A rooted Android device, OR
-- An Android emulator (easier)
+### Why This Is Complicated
+
+The Kohler Konnect app has **aggressive protection** that must be bypassed:
+
+1. **SSL Certificate Pinning** - The app refuses to trust any certificate except Kohler's, which blocks mitmproxy from seeing traffic.
+
+2. **Root Detection** - The app uses RootBeer-based detection with 10+ checks:
+   - Checks for `su` binaries in multiple locations
+   - Looks for Magisk, SuperSU, Xposed
+   - Checks for root management apps
+   - Verifies build tags aren't "test-keys"
+   - Native library checks
+
+3. **Emulator Detection** - The app detects and refuses to run on emulators:
+   - Checks Build.HARDWARE, Build.PRODUCT, Build.MODEL
+   - Checks SystemProperties for qemu/goldfish/genymotion
+   - Checks TelephonyManager for missing carrier info
+
+**Our Frida script (`scripts/ssl_bypass.js`) bypasses ALL THREE layers:**
+- Spoofs Build properties to appear as a Samsung Galaxy S21
+- Hooks the obfuscated `Is.b` class to defeat all root checks
+- Hooks File.exists/canRead/etc. to hide root paths
+- Installs a permissive TrustManager to bypass SSL pinning
+
+**Why Genymotion?** Frida requires root access to inject into apps. Options:
+- **Genymotion emulator** (recommended) - Already rooted, easy to push frida-server
+- **Physical rooted device** - Works but harder to set up
+- **Physical non-rooted device** - Won't work (can't run Frida)
 
 We recommend **Genymotion** (free for personal use): https://www.genymotion.com/download/
 
@@ -288,17 +313,35 @@ make proxy
 
 This starts mitmproxy on port 8080. Press **ENTER** when prompted.
 
-### 5c. Launch Kohler App with SSL Bypass
+### 5c. Launch Kohler App with Frida Bypass
 
-In a **third terminal**, launch the app with Frida's SSL bypass:
+In a **third terminal**, launch the app with our Frida bypass script:
 ```bash
 frida -U -f com.kohler.hermoth -l scripts/ssl_bypass.js
 ```
 
 This:
 1. Spawns the Kohler Konnect app
-2. Injects the SSL bypass script
-3. Allows mitmproxy to see the traffic
+2. Injects our bypass script which:
+   - Spoofs device as Samsung Galaxy S21 (defeats emulator detection)
+   - Hooks `Is.b` class methods (defeats root detection)
+   - Hides root-related file paths (defeats file-based root checks)
+   - Installs permissive TrustManager (defeats SSL pinning)
+3. Allows the app to run and mitmproxy to see the traffic
+
+**Watch the Frida terminal** - you should see bypass messages like:
+```
+[*] SSL Pinning + Root Detection + Emulator Detection Bypass loaded
+[+] Build properties spoofed to Samsung Galaxy S21
+[+] SystemProperties emulator bypass installed
+[+] TelephonyManager emulator bypass installed
+[+] Kohler Is.b root detection bypass installed
+[+] File.* bypass installed
+[+] TrustManager bypass installed
+[*] All bypasses loaded - try signing in now
+```
+
+If the app crashes or shows an error, check the Frida output for which bypass failed.
 
 ### 5d. Log In and Capture
 
@@ -483,15 +526,36 @@ nano .env
 
 ### Mitmproxy shows no Kohler traffic
 
+- Make sure you launched the app with Frida (Step 5c), not by tapping the app icon
 - Verify proxy settings on Android (Step 4b)
 - Make sure the mitmproxy certificate is installed (Step 4c)
-- Try restarting the Kohler app after setting up the proxy
+- Check Frida terminal shows all bypasses installed successfully
 
-### "APIM key not found"
+### Kohler app crashes or shows error on launch
 
-The Kohler app may be using certificate pinning. You may need to:
-1. Use an older version of the app
-2. Use Frida to bypass SSL pinning (advanced - see `docs/REVERSE_ENGINEERING.md`)
+The app detected root/emulator. Check the Frida terminal output:
+
+1. **Missing bypass messages** - The script didn't inject properly. Try:
+   ```bash
+   frida -U -f com.kohler.hermoth -l scripts/ssl_bypass.js --no-pause
+   ```
+
+2. **"Is.b not found"** - Kohler updated their obfuscation. The root detection class name changed. Check `docs/REVERSE_ENGINEERING.md` for how to find the new class name.
+
+3. **App shows "rooted device" error** - A root check wasn't bypassed. Look for `[-]` lines in Frida output showing which hook failed.
+
+### Kohler app works but mitmproxy sees nothing
+
+SSL pinning bypass may have failed:
+- Check for `[+] TrustManager bypass installed` in Frida output
+- Check for `[+] TrustManagerImpl bypass installed` in Frida output
+- If missing, the app may be using a different pinning method
+
+### "APIM key not found" after capturing traffic
+
+- Make sure you navigated around in the app (view devices, tap on shower)
+- The APIM key is in requests to `api-kohler-us.kohler.io`
+- Look for the header `Ocp-Apim-Subscription-Key` in mitmproxy
 
 ### APK extraction finds nothing
 
