@@ -1,6 +1,13 @@
 # Kohler Anthem API Reference
 
 Complete API documentation for the Kohler Anthem Digital Shower system.
+Reverse-engineered from app traffic capture on 2026-01-12.
+
+## Base URL
+
+```
+https://api-kohler-us.kohler.io
+```
 
 ## Authentication
 
@@ -11,20 +18,40 @@ Complete API documentation for the Kohler Anthem Digital Shower system.
 | Tenant | `konnectkohler.onmicrosoft.com` |
 | Policy | `B2C_1_ROPC_Auth` |
 | Token URL | `https://konnectkohler.b2clogin.com/tfp/konnectkohler.onmicrosoft.com/B2C_1_ROPC_Auth/oauth2/v2.0/token` |
-| Client ID | `$KOHLER_CLIENT_ID` |
-| API Resource | `$KOHLER_API_RESOURCE` |
-| Scopes | `openid offline_access https://konnectkohler.onmicrosoft.com/$KOHLER_API_RESOURCE/apiaccess` |
+| Client ID | `8caf9530-1d13-48e6-867c-0f082878debc` |
 
 ### Token Request
 
 ```bash
 curl -X POST "https://konnectkohler.b2clogin.com/tfp/konnectkohler.onmicrosoft.com/B2C_1_ROPC_Auth/oauth2/v2.0/token" \
   -d "grant_type=password" \
-  -d "client_id=$KOHLER_CLIENT_ID" \
+  -d "client_id=8caf9530-1d13-48e6-867c-0f082878debc" \
   -d "username=YOUR_EMAIL" \
   -d "password=YOUR_PASSWORD" \
-  -d "scope=openid offline_access https://konnectkohler.onmicrosoft.com/$KOHLER_API_RESOURCE/apiaccess"
+  -d "scope=openid offline_access https://konnectkohler.onmicrosoft.com/API_RESOURCE/apiaccess"
 ```
+
+### Token Response
+
+```json
+{
+  "access_token": "eyJ...",
+  "token_type": "Bearer",
+  "expires_in": 3600,
+  "refresh_token": "eyJ..."
+}
+```
+
+### JWT Claims
+
+| Claim | Description |
+|-------|-------------|
+| `oid` | Customer ID (tenant ID for API calls) |
+| `sub` | Subject (same as oid) |
+| `emails` | User email array |
+| `name` | Display name |
+| `tfp` | Policy name |
+| `scp` | Scopes |
 
 ### Required Headers
 
@@ -36,43 +63,346 @@ Content-Type: application/json
 Ocp-Apim-Subscription-Key: {apim_key}
 ```
 
-The APIM subscription key must be captured via mitmproxy (see REVERSE_ENGINEERING.md).
+The APIM subscription key must be captured via Frida from the mobile app.
 
-## REST API
+---
 
-### Base URL
+## Device Discovery
 
-```
-https://api-kohler-us.kohler.io
-```
-
-### Device Discovery
+### Get Customer Devices
 
 **GET** `/devices/api/v1/device-management/customer-device/{customer_id}`
 
-The `customer_id` is extracted from the JWT access token (`oid` claim).
+Returns all devices associated with the customer account.
 
 **Response:**
+
 ```json
 {
-  "customerHome": [{
-    "homeId": "uuid",
-    "homeName": "My Home",
-    "devices": [{
-      "deviceId": "gcs-xxxxxxxxx",
-      "logicalName": "My Shower",
-      "serialNumber": "xxxxxxxxxxxxxxxx",
-      "sku": "GCS",
-      "isActive": true,
-      "isProvisioned": true
-    }]
-  }]
+  "id": "cfd22e16-f7be-4038-b7ff-bf08790b8ec4",
+  "tenantId": "cfd22e16-f7be-4038-b7ff-bf08790b8ec4",
+  "waterUnits": "Standard",
+  "temperatureUnit": "Fahrenheit",
+  "usageAcceptance": true,
+  "diagnosticAcceptance": false,
+  "pushNotification": true,
+  "pushNotificationCategories": ["alert", "updates", "reminders"],
+  "locationDataAcceptance": false,
+  "isActive": true,
+  "googleSmartHomeUser": "True",
+  "googleLinkingStatus": "True",
+  "voiceLastSeen": 1695249617,
+  "createdTime": 1695249617,
+  "customerHome": [
+    {
+      "homeId": "d5bdfa71-beb6-4085-a324-e975a66eaa4c",
+      "homeName": "29 North Way",
+      "createdTime": 1695249637,
+      "homeLatitude": 41.1742598,
+      "homeLongitude": -73.7592159,
+      "address": "29 North Way, Chappaqua, NY, 10514, United States",
+      "devices": [
+        {
+          "deviceId": "gcs-sio3225nc9",
+          "logicalName": "Primary Bathroom",
+          "sku": "GCS",
+          "serialNumber": "1122200722155633",
+          "isActive": true,
+          "isProvisioned": true,
+          "shareUsage": false,
+          "ssid": "gcs-sio3225nc9",
+          "createdTime": 1740844739,
+          "showOnBoardingScreen": true,
+          "showWaterSavingGoalScreen": true
+        }
+      ]
+    }
+  ]
 }
 ```
 
-### Working Commands
+---
 
-#### Warmup
+## Device Status
+
+### Get Device State
+
+**GET** `/devices/api/v1/device-management/gcs-state/gcsadvancestate/{device_id}`
+
+Returns complete device state including valve status, settings, and firmware info.
+
+**Response Structure:**
+
+```json
+{
+  "id": "gcs-sio3225nc9",
+  "deviceId": "gcs-sio3225nc9",
+  "sku": "GCS",
+  "tenantId": "cfd22e16-f7be-4038-b7ff-bf08790b8ec4",
+  "connectionState": "Connected",
+  "lastConnected": 1768250340,
+  "state": { ... },
+  "setting": { ... },
+  "firmwareVersionInfo": { ... },
+  "firmwareUpdate": { ... }
+}
+```
+
+### State Object
+
+```json
+{
+  "warmUpState": {
+    "warmUp": "warmUpDisabled",
+    "state": "warmUpNotInProgress"
+  },
+  "firmwareUpdate": "noUpdateAvailable",
+  "bleConnected": "NotConnected",
+  "ioTActive": "Active",
+  "ioTProvision": "noProvisionMode",
+  "currentSystemState": "normalOperation",
+  "blePairing": "normal",
+  "presetOrExperienceId": "0",
+  "configChangeIndent": "3",
+  "totalVolume": "857881122",
+  "totalFlow": "3353.5",
+  "ready": "true",
+  "valveState": [...]
+}
+```
+
+| Field | Values | Description |
+|-------|--------|-------------|
+| `warmUpState.state` | `warmUpNotInProgress`, `warmUpInProgress` | Warmup status |
+| `currentSystemState` | `normalOperation`, `showerInProgress` | System state |
+| `presetOrExperienceId` | `"0"` = none, `"1"-"5"` = preset running | Active preset |
+| `ioTActive` | `Active`, `Inactive` | Cloud connection |
+| `totalVolume` | integer | Lifetime water volume (units unknown) |
+| `totalFlow` | float | Lifetime flow in gallons |
+
+### Valve State Array
+
+Each valve in `valveState[]`:
+
+```json
+{
+  "valveIndex": "Valve1",
+  "atFlow": "0",
+  "atTemp": "1",
+  "flowSetpoint": "50",
+  "temperatureSetpoint": "37.7",
+  "errorFlag": "0",
+  "errorCode": "1",
+  "pauseFlag": "0",
+  "out1": "0",
+  "out2": "1",
+  "out3": "0",
+  "outlets": [
+    {
+      "outletIndex": "outlet1",
+      "outletTemp": "0",
+      "outletFlow": "0"
+    }
+  ]
+}
+```
+
+| Field | Description |
+|-------|-------------|
+| `atFlow` | At target flow (0/1) |
+| `atTemp` | At target temperature (0/1) |
+| `flowSetpoint` | Flow percentage (0-100) |
+| `temperatureSetpoint` | Temperature in Celsius |
+| `out1`, `out2`, `out3` | Outlet on/off state (0/1) |
+| `errorFlag` | Error present (0/1) |
+| `errorCode` | Error code |
+
+### Settings Object
+
+```json
+{
+  "uiConfig": [...],
+  "eco": {
+    "ecoMode": null,
+    "flowRate": null,
+    "ecoTimeLimit": null
+  },
+  "valveSettings": [...],
+  "interfaceFirmwareTypeVersion": {...},
+  "flowControl": "Disabled"
+}
+```
+
+### UI Config Array
+
+Each UI in `uiConfig[]`:
+
+```json
+{
+  "ui": "UI1",
+  "temperatureUnits": "F",
+  "flowUnits": "Gallons",
+  "standByLighting": "Disabled",
+  "demoMode": "disabled",
+  "delayStart": "Disabled",
+  "timeFormat": "12",
+  "bathFillPresetId": "0",
+  "toggleOutlets": "Disabled",
+  "waterSavingMode": "Disabled",
+  "accessibilityMode": "Disabled",
+  "backLight": "5",
+  "hapticFeedback": "Enabled",
+  "sounderVolume": "Disabled",
+  "defaultHomeScreen": "193",
+  "proximitySensorMode": "1",
+  "proximitySensorDistance": "65535",
+  "language": "en",
+  "languageRegion": "GB",
+  "notification": "7",
+  "defaultMemory": "1"
+}
+```
+
+### Valve Settings Array
+
+Each valve in `valveSettings[]`:
+
+```json
+{
+  "valve": "Valve1",
+  "noOfOutlets": "2",
+  "valveFirmwareType": "57",
+  "valveFirmwareVersion": "10",
+  "outletConfigurations": [
+    {
+      "outLetType": "11",
+      "outLetFlags": "1",
+      "maximumOutletTemperature": "48.8",
+      "minimumOutletTemperature": "15",
+      "defaultOutletTemperature": "37.7",
+      "maximumFlowrate": "50",
+      "minimumFlowrate": "4",
+      "defaultFlowrate": "50",
+      "maximumRuntime": "1800",
+      "outLetId": "0"
+    }
+  ]
+}
+```
+
+| Field | Description |
+|-------|-------------|
+| `outLetType` | Outlet type code (see below) |
+| `maximumOutletTemperature` | Max temp in Celsius |
+| `minimumOutletTemperature` | Min temp in Celsius |
+| `maximumFlowrate` | Max flow percentage |
+| `minimumFlowrate` | Min flow percentage |
+| `maximumRuntime` | Max runtime in seconds |
+
+**Outlet Types:**
+
+| Code | Type |
+|------|------|
+| `1` | Handshower |
+| `11` | Showerhead |
+| `21` | Bathtub filler |
+
+### Firmware Version Info
+
+```json
+{
+  "gatewayConfigInfo": {
+    "model": "GCS",
+    "serialNo": "sio3225nc9",
+    "installDate": "1743700184",
+    "firmware": "00.74"
+  },
+  "valvesConfigInfo": [
+    {
+      "name": "PrimaryValve",
+      "status": "Connected",
+      "model": "57",
+      "serialNo": "1122200722155633",
+      "firmware": "10"
+    },
+    {
+      "name": "SecondaryValve1",
+      "status": "Connected",
+      "model": "57",
+      "firmware": "10"
+    }
+  ],
+  "interfacesConfigInfo": [
+    {
+      "name": "Ui1",
+      "firmware": "1.43",
+      "status": "Connected",
+      "assetsFirmware": "1.0"
+    }
+  ]
+}
+```
+
+---
+
+## Presets
+
+### Get Presets
+
+**GET** `/devices/api/v1/device-management/gcs-preset/{device_id}`
+
+Returns all presets and experiences configured on the device.
+
+**Response:**
+
+```json
+{
+  "deviceId": "gcs-sio3225nc9",
+  "sku": "GCS",
+  "tenantId": "cfd22e16-f7be-4038-b7ff-bf08790b8ec4",
+  "presets": [
+    {
+      "presetId": "1",
+      "title": "My Shower",
+      "logicalName": "Primary Bathroom",
+      "isExperience": "False",
+      "pauseFlag": "off",
+      "state": "off",
+      "timestamp": 1768250179,
+      "time": "1800",
+      "isSent": "1",
+      "valveDetails": [
+        {
+          "valveIndex": "Valve1",
+          "hexString": "0179c8",
+          "outlets": [
+            {
+              "outletIndex": "outlet1",
+              "temperature": "37.7",
+              "flow": "50",
+              "value": "1"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
+```
+
+| Field | Description |
+|-------|-------------|
+| `presetId` | Preset identifier ("1"-"5") |
+| `isExperience` | "True" for experiences, "False" for presets |
+| `time` | Duration in seconds |
+| `hexString` | Valve settings (3 bytes: prefix, temp, flow) |
+| `outlets[].value` | Outlet enabled ("0"/"1") |
+
+---
+
+## Commands
+
+### Warmup
 
 Preheats water before shower.
 
@@ -80,25 +410,27 @@ Preheats water before shower.
 
 ```json
 {
-  "deviceId": "gcs-xxxxxxxxx",
+  "deviceId": "gcs-sio3225nc9",
   "sku": "GCS",
-  "tenantId": "customer-uuid"
+  "tenantId": "cfd22e16-f7be-4038-b7ff-bf08790b8ec4"
 }
 ```
 
 **Response:** `201 Created`
 
-#### Start/Stop Preset
+---
 
-Control shower via presets (1-5) or stop (0).
+### Start/Stop Preset
+
+Control shower via presets.
 
 **POST** `/platform/api/v1/commands/gcs/controlpresetorexperience`
 
 ```json
 {
-  "deviceId": "gcs-xxxxxxxxx",
+  "deviceId": "gcs-sio3225nc9",
   "sku": "GCS",
-  "tenantId": "customer-uuid",
+  "tenantId": "cfd22e16-f7be-4038-b7ff-bf08790b8ec4",
   "presetOrExperienceId": "1"
 }
 ```
@@ -110,11 +442,13 @@ Control shower via presets (1-5) or stop (0).
 
 **Response:** `201 Created`
 
-#### Direct Valve Control (writesolostatus)
+---
+
+### Direct Valve Control
 
 Control individual valves with temperature, flow, and outlet selection.
 
-**POST** `/platform/api/v1/commands/gcs/writesolostatus`
+**POST** `/platform/api/v1/commands/gcs/solowritesystem`
 
 ```json
 {
@@ -128,109 +462,199 @@ Control individual valves with temperature, flow, and outlet selection.
     "secondaryValve6": "00000000",
     "secondaryValve7": "00000000"
   },
-  "deviceId": "gcs-xxxxxxxxx",
+  "deviceId": "gcs-sio3225nc9",
   "sku": "GCS",
-  "tenantId": "customer-uuid"
+  "tenantId": "cfd22e16-f7be-4038-b7ff-bf08790b8ec4"
 }
 ```
 
-**Response:** `201 Created` with `correlationId` and `timestamp`
-
-**Note:** This endpoint returned 404 in earlier REST tests but works from the app. May require specific session state or headers.
-
-See [dev/docs/VALVE_PROTOCOL.md](../dev/docs/VALVE_PROTOCOL.md) for complete valve value encoding.
-
-### Non-Working Endpoints (404)
-
-- `/platform/api/v1/commands/gcs/writepresetstart` - Preset start (use controlpresetorexperience)
-
-### Untested Endpoints
-
-- `/platform/api/v1/commands/gcs/bathfillervolume` - Bath fill control
-- `/platform/api/v1/commands/gcs/createpreset` - Create new preset
-- `/platform/api/v1/commands/gcs/writeuiconfig` - UI configuration
-- `/platform/api/v1/commands/gcs/factoryreset` - Factory reset
-
-## MQTT (IoT Hub)
-
-Real-time status updates use Azure IoT Hub MQTT.
-
-### Connection
-
-- **Host:** `prd-hub.azure-devices.net`
-- **Port:** 8883 (TLS)
-- **Protocol:** MQTT 5.0
-
-The connection string is not returned by the REST API. It must be captured via Frida/mitmproxy from the mobile app.
-
-### Status Message Format
+**Response:**
 
 ```json
 {
-  "messageid": "uuid",
-  "deviceid": "gcs-xxxxxxxxx",
-  "sku": "GCS",
-  "type": "STS",
-  "data": {
-    "type": "Status",
-    "code": "GCS_SOLO_STS",
-    "attributes": [{
-      "warmUpStatus": "warmUpNotInProgress",
-      "currentSystemState": "normalOperation",
-      "presetOrExperienceId": "0",
-      "primaryValve1": "0184c80000000001",
-      "secondaryValve1": "1184c80100000001"
-    }]
-  }
+  "correlationId": "79386ba5-e5f4-4fcf-9a0b-db6153706c26",
+  "timestamp": 1768250661478
 }
 ```
 
-### Status Attributes
+**Response:** `201 Created`
 
-| Attribute | Values |
-|-----------|--------|
-| `warmUpStatus` | `warmUpNotInProgress`, `warmUpInProgress` |
-| `currentSystemState` | `normalOperation`, `showerInProgress` |
-| `presetOrExperienceId` | `0` = none, `1-5` = preset running |
-| `IoTActive` | `Active` = device connected |
+---
 
-## Device Configuration
+## Valve Value Encoding
 
-### Temperature Limits
-
-| Setting | Celsius | Fahrenheit |
-|---------|---------|------------|
-| Minimum | 15.0 | 59 |
-| Maximum | 48.8 | 120 |
-| Default | 37.7 | 100 |
-
-### Valve Configuration
-
-- 1 Primary Valve
-- Up to 7 Secondary Valves
-
-### Valve Value Format
-
-8-character hex string (4 bytes) encoding valve state:
+Each valve value is an 8-character hex string (4 bytes):
 
 ```
 [prefix][temp][flow][mode]
    01     79    c8    01
 ```
 
-| Byte | Description |
-|------|-------------|
-| 0 | Valve prefix: `01`=primary, `11`=secondary |
-| 1 | Temperature (0x00-0xE8, ~15-48.8°C) |
-| 2 | Flow rate (0x00-0xC8, 0-100%) |
-| 3 | Mode: `00`=off, `01`=shower, `02`=tub, `03`=tub+on, `40`=stop |
+| Byte | Position | Range | Description |
+|------|----------|-------|-------------|
+| 0 | Prefix | `01`, `11` | Valve identifier |
+| 1 | Temperature | `00`-`E8` | Temperature (see formula) |
+| 2 | Flow | `00`-`C8` | Flow rate (see formula) |
+| 3 | Mode | see below | Outlet state |
 
-See [dev/docs/VALVE_PROTOCOL.md](../dev/docs/VALVE_PROTOCOL.md) for complete encoding details.
+### Prefix Values
+
+| Prefix | Valve |
+|--------|-------|
+| `01` | primaryValve1 |
+| `11` | secondaryValve1 |
+
+### Temperature Encoding
+
+```
+temp_celsius = 15 + (byte_value * 0.146)
+```
+
+| Hex | Decimal | Temperature |
+|-----|---------|-------------|
+| `00` | 0 | 15.0°C (59°F) - minimum |
+| `5e` | 94 | 35.0°C (95°F) |
+| `79` | 121 | 37.7°C (100°F) - default |
+| `9b` | 155 | 41.1°C (106°F) |
+| `e8` | 232 | 48.8°C (120°F) - maximum |
+
+### Flow Encoding
+
+```
+flow_percent = byte_value / 2
+```
+
+| Hex | Decimal | Flow |
+|-----|---------|------|
+| `00` | 0 | 0% |
+| `64` | 100 | 50% |
+| `c8` | 200 | 100% |
+
+### Mode Values
+
+| Hex | Binary | Description |
+|-----|--------|-------------|
+| `00` | 00000000 | Off |
+| `01` | 00000001 | Shower mode, on |
+| `02` | 00000010 | Bathtub filler mode |
+| `03` | 00000011 | Bathtub handheld mode |
+| `40` | 01000000 | Stop/standby |
+
+**Bit interpretation:**
+- Bit 0 (0x01): Outlet active
+- Bit 1 (0x02): Bathtub mode (vs shower mode)
+- Bit 6 (0x40): Stop command
+
+---
+
+## Example Commands
+
+### Turn on showerhead only
+
+```json
+{
+  "primaryValve1": "0179c801",
+  "secondaryValve1": "1179c800"
+}
+```
+
+### Turn on handshower only
+
+```json
+{
+  "primaryValve1": "0179c800",
+  "secondaryValve1": "1179c801"
+}
+```
+
+### Turn on both showerhead and handshower
+
+```json
+{
+  "primaryValve1": "0179c801",
+  "secondaryValve1": "1179c801"
+}
+```
+
+### Turn on bathtub filler
+
+```json
+{
+  "primaryValve1": "0179c802",
+  "secondaryValve1": "1179c800"
+}
+```
+
+### Set temperature to 41°C (hot)
+
+```json
+{
+  "primaryValve1": "019bc801",
+  "secondaryValve1": "119bc801"
+}
+```
+
+### Set flow to 50%
+
+```json
+{
+  "primaryValve1": "01796401",
+  "secondaryValve1": "11796401"
+}
+```
+
+### Stop all water
+
+```json
+{
+  "primaryValve1": "0179c840",
+  "secondaryValve1": "1179c840"
+}
+```
+
+---
+
+## Device Limits
+
+From device configuration:
+
+| Setting | Value |
+|---------|-------|
+| Minimum temperature | 15.0°C (59°F) |
+| Maximum temperature | 48.8°C (120°F) |
+| Default temperature | 37.7°C (100°F) |
+| Minimum flow | 4% |
+| Maximum flow | 50% (device-specific) |
+| Default flow | 50% |
+| Maximum runtime | 1800 seconds (30 min) |
+
+---
+
+## Non-Working Endpoints
+
+- `/platform/api/v1/commands/gcs/writesolostatus` - Returns 404 (use `solowritesystem`)
+- `/platform/api/v1/commands/gcs/writepresetstart` - Returns 404 (use `controlpresetorexperience`)
+
+---
+
+## IoT Hub (MQTT)
+
+Real-time status updates use Azure IoT Hub MQTT.
+
+| Setting | Value |
+|---------|-------|
+| Host | `prd-hub.azure-devices.net` |
+| Port | 8883 (TLS) |
+| Protocol | MQTT 5.0 |
+
+The connection string is not returned by the REST API and must be captured via Frida/mitmproxy.
+
+---
 
 ## Key Identifiers
 
 | Field | Source | Example |
 |-------|--------|---------|
-| `deviceId` | Device discovery response | `gcs-xxxxxxxxx` |
-| `tenantId` | JWT `oid` claim | `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx` |
+| `deviceId` | Device discovery | `gcs-sio3225nc9` |
+| `tenantId` | JWT `oid` claim | `cfd22e16-f7be-4038-b7ff-bf08790b8ec4` |
 | `sku` | Always | `GCS` |

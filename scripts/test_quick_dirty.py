@@ -411,7 +411,10 @@ async def send_preset_control(access_token: str, device_id: str, tenant_id: str,
 async def test_valve_control(access_token: str, device_id: str, tenant_id: str,
                             primary_valve: str = "0179c840",
                             secondary_valve: str = "1179c840") -> bool:
-    """Test direct valve control (writesolostatus) with correct payload format.
+    """Test direct valve control (solowritesystem) with correct payload format.
+
+    NOTE: The correct endpoint is 'solowritesystem' NOT 'writesolostatus'.
+    This was discovered via mitmproxy capture on 2026-01-12.
 
     Valve value format: [prefix][temp][flow][mode]
         - prefix: 01=primary, 11=secondary
@@ -425,10 +428,11 @@ async def test_valve_control(access_token: str, device_id: str, tenant_id: str,
         - "0179c840" = primary, 37.7°C, 100% flow, STOP
     """
     print(f"\n{'='*60}")
-    print("Testing: Direct Valve Control (writesolostatus)")
+    print("Testing: Direct Valve Control (solowritesystem)")
     print(f"{'='*60}")
 
-    endpoint = f"{PLATFORM_API_BASE}/platform/api/v1/commands/gcs/writesolostatus"
+    # Correct endpoint discovered via mitmproxy capture
+    endpoint = f"{PLATFORM_API_BASE}/platform/api/v1/commands/gcs/solowritesystem"
     headers = {
         "Authorization": f"Bearer {access_token}",
         "Content-Type": "application/json",
@@ -603,7 +607,7 @@ async def main():
         print(f"     Preset Control: ⏭️  Skipped (uncomment to test)")
     else:
         print(f"     Preset Control: {'✅ Working' if test_results.get('preset_start') else '❌ Failed'}")
-    print(f"     Valve Control: {'✅ Working' if test_results.get('valve_control') else '❌ Failed (may need session state)'}")
+    print(f"     Valve Control: {'✅ Working' if test_results.get('valve_control') else '❌ Failed'}")
     print()
     if connection_string:
         print(f"  IoT Hub (MQTT): {'✅ Connected' if test_results.get('iot_hub') else '❌ Failed'}")
@@ -615,9 +619,9 @@ async def main():
     print("     - Device discovery via REST API")
     print("     - Warmup command")
     print("     - Start/Stop presets (1-5, 0 to stop)")
+    print("     - Direct valve/temperature control (solowritesystem)")
     print()
-    print("  Not Working:")
-    print("     - Direct valve/temperature control (API returns 404)")
+    print("  Notes:")
     print("     - Real-time status (needs IoT Hub connection string)")
 
 
