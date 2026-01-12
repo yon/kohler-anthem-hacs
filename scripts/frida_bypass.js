@@ -145,8 +145,16 @@ if (Java.available) {
             "/data/local/xbin/su", "/data/local/bin/su", "/data/local/su",
             "/system/sd/xbin/su", "/system/bin/failsafe/su",
             "/system/app/Superuser.apk", "/system/app/SuperSU.apk",
-            "/data/data/com.topjohnwu.magisk", "/sbin/.magisk",
-            "/system/xbin/busybox", "/system/bin/busybox"
+            "/system/app/SuperSU/SuperSU.apk",
+            "/data/data/com.noshufou.android.su", "/data/data/eu.chainfire.supersu",
+            "/data/data/com.koushikdutta.superuser", "/data/data/com.thirdparty.superuser",
+            "/data/data/com.topjohnwu.magisk", "/cache/magisk.log",
+            "/data/adb/magisk", "/sbin/.magisk",
+            "/system/xbin/daemonsu", "/dev/com.koushikdutta.superuser.daemon",
+            "/system/bin/.ext/su", "/system/usr/we-need-root/su",
+            "/cache/su", "/data/su", "/dev/su",
+            "/system/xbin/busybox", "/system/bin/busybox",
+            "/product/bin/su", "/odm/bin/su", "/vendor/bin/su", "/vendor/xbin/su"
         ];
 
         function isRootPath(path) {
@@ -154,7 +162,11 @@ if (Java.available) {
                 if (path === rootPaths[i]) return true;
             }
             var p = path.toLowerCase();
-            return p.indexOf("/magisk") !== -1 || p.indexOf("/supersu") !== -1 || p.indexOf("/busybox") !== -1;
+            var rootPatterns = ["/magisk/", "/.magisk", "/supersu/", "/superuser/", "/xposed/", "/busybox"];
+            for (var i = 0; i < rootPatterns.length; i++) {
+                if (p.indexOf(rootPatterns[i]) !== -1) return true;
+            }
+            return false;
         }
 
         try {
@@ -169,10 +181,25 @@ if (Java.available) {
                 if (isRootPath(path)) return false;
                 return this.canRead.call(this);
             };
+            File.canWrite.implementation = function() {
+                var path = this.getAbsolutePath();
+                if (isRootPath(path)) return false;
+                return this.canWrite.call(this);
+            };
             File.canExecute.implementation = function() {
                 var path = this.getAbsolutePath();
                 if (isRootPath(path)) return false;
                 return this.canExecute.call(this);
+            };
+            File.isFile.implementation = function() {
+                var path = this.getAbsolutePath();
+                if (isRootPath(path)) return false;
+                return this.isFile.call(this);
+            };
+            File.isDirectory.implementation = function() {
+                var path = this.getAbsolutePath();
+                if (isRootPath(path)) return false;
+                return this.isDirectory.call(this);
             };
             console.log("[+] File.* root path bypass installed");
         } catch(e) {
@@ -220,6 +247,19 @@ if (Java.available) {
             console.log("[+] SystemProperties bypass installed");
         } catch(e) {
             console.log("[-] SystemProperties bypass failed: " + e);
+        }
+
+        // TelephonyManager bypass (emulator detection via carrier info)
+        try {
+            var TelephonyManager = Java.use("android.telephony.TelephonyManager");
+            TelephonyManager.getNetworkOperatorName.overload().implementation = function() { return "T-Mobile"; };
+            TelephonyManager.getSimOperatorName.overload().implementation = function() { return "T-Mobile"; };
+            TelephonyManager.getNetworkOperator.overload().implementation = function() { return "310260"; };
+            TelephonyManager.getSimOperator.overload().implementation = function() { return "310260"; };
+            TelephonyManager.getPhoneType.overload().implementation = function() { return 1; };
+            console.log("[+] TelephonyManager emulator bypass installed");
+        } catch(e) {
+            console.log("[-] TelephonyManager bypass failed: " + e);
         }
 
         // =============== PROXY DETECTION BYPASS ===============
