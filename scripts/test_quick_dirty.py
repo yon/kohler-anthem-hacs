@@ -408,8 +408,22 @@ async def send_preset_control(access_token: str, device_id: str, tenant_id: str,
     return False
 
 
-async def test_valve_control(access_token: str, device_id: str, tenant_id: str) -> bool:
-    """Test direct valve control (writesolostatus) - known to return 404."""
+async def test_valve_control(access_token: str, device_id: str, tenant_id: str,
+                            primary_valve: str = "0179c840",
+                            secondary_valve: str = "1179c840") -> bool:
+    """Test direct valve control (writesolostatus) with correct payload format.
+
+    Valve value format: [prefix][temp][flow][mode]
+        - prefix: 01=primary, 11=secondary
+        - temp: 00-E8 (15-48.8°C)
+        - flow: 00-C8 (0-100%)
+        - mode: 00=off, 01=shower, 02=tub, 03=tub+on, 40=stop
+
+    Examples:
+        - "0179c801" = primary, 37.7°C, 100% flow, showerhead on
+        - "1179c801" = secondary, 37.7°C, 100% flow, handshower on
+        - "0179c840" = primary, 37.7°C, 100% flow, STOP
+    """
     print(f"\n{'='*60}")
     print("Testing: Direct Valve Control (writesolostatus)")
     print(f"{'='*60}")
@@ -420,17 +434,26 @@ async def test_valve_control(access_token: str, device_id: str, tenant_id: str) 
         "Content-Type": "application/json",
         "Ocp-Apim-Subscription-Key": APIM_SUBSCRIPTION_KEY,
     }
+
+    # Use the exact payload format captured from the app
     payload = {
+        "gcsValveControlModel": {
+            "primaryValve1": primary_valve,
+            "secondaryValve1": secondary_valve,
+            "secondaryValve2": "00000000",
+            "secondaryValve3": "00000000",
+            "secondaryValve4": "00000000",
+            "secondaryValve5": "00000000",
+            "secondaryValve6": "00000000",
+            "secondaryValve7": "00000000",
+        },
         "deviceId": device_id,
         "sku": "GCS",
         "tenantId": tenant_id,
-        "valveId": "1",
-        "temperature": 100,
-        "flowRate": 100,
     }
 
     print(f"   Endpoint: {endpoint}")
-    print(f"   Note: This endpoint returns 404 - direct valve control not available via API")
+    print(f"   Payload: {json.dumps(payload, indent=2)}")
 
     async with aiohttp.ClientSession() as session:
         try:
@@ -438,10 +461,11 @@ async def test_valve_control(access_token: str, device_id: str, tenant_id: str) 
                 text = await resp.text()
                 print(f"   Status: {resp.status}")
                 if resp.status in (200, 201, 202):
-                    print(f"   ✅ Valve control succeeded (unexpected!)")
+                    print(f"   ✅ Valve control succeeded!")
+                    print(f"   Response: {text[:200]}")
                     return True
                 else:
-                    print(f"   ❌ Expected 404: {text[:100]}")
+                    print(f"   ❌ Failed: {text[:200]}")
         except Exception as err:
             print(f"   ❌ Error: {err}")
     return False
@@ -579,7 +603,7 @@ async def main():
         print(f"     Preset Control: ⏭️  Skipped (uncomment to test)")
     else:
         print(f"     Preset Control: {'✅ Working' if test_results.get('preset_start') else '❌ Failed'}")
-    print(f"     Valve Control: {'❌ Returns 404 (not available)' if not test_results.get('valve_control') else '✅ Working'}")
+    print(f"     Valve Control: {'✅ Working' if test_results.get('valve_control') else '❌ Failed (may need session state)'}")
     print()
     if connection_string:
         print(f"  IoT Hub (MQTT): {'✅ Connected' if test_results.get('iot_hub') else '❌ Failed'}")

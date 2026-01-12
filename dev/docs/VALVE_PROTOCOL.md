@@ -8,7 +8,15 @@ Reverse-engineered from app traffic capture on 2026-01-12.
 POST https://api-kohler-us.kohler.io/platform/api/v1/commands/gcs/writesolostatus
 ```
 
-**Note:** This endpoint returned 404 in earlier REST API tests, but works from the app. May require specific headers or session state.
+**Status:** Returns 404 from direct REST calls but works from app.
+
+Possible reasons:
+1. Different endpoint URL (Retrofit config may use different path)
+2. Missing headers (app may send additional headers)
+3. Session state requirement (prior API calls may establish state)
+4. Commands sent via IoT Hub MQTT instead of REST
+
+**TODO:** Capture actual HTTP request with mitmproxy to verify URL and headers.
 
 ## Request Model
 
