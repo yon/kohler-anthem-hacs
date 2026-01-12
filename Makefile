@@ -9,12 +9,13 @@
 #   make clean      - Remove generated files
 
 SHELL := /bin/bash
-.PHONY: install extract proxy env test clean help frida-start frida-stop frida-status bypass
+.PHONY: install extract proxy env test clean help frida-start frida-stop frida-status bypass proxy-on proxy-off proxy-status capture mitm-cert-install
 
 # Directories
 SCRIPTS_DIR := scripts
 BUILD_DIR := .build
-APK_DIR := $(BUILD_DIR)/apk
+APK_DIR := dev/apk
+DECOMPILED_DIR := $(BUILD_DIR)/decompiled
 
 # Files
 ENV_FILE := .env
@@ -23,22 +24,25 @@ SECRETS_FILE := $(BUILD_DIR)/secrets.json
 help:
 	@echo "Kohler Anthem HACS Integration Setup"
 	@echo ""
-	@echo "Usage:"
-	@echo "  make install        Install required tools (Homebrew, Python, Frida, jadx)"
-	@echo "  make extract        Extract client_id and api_resource from APK"
-	@echo "  make proxy          Start mitmproxy to capture APIM key (requires Frida)"
-	@echo "  make env            Generate .env file (interactive)"
-	@echo "  make test           Test authentication and device discovery"
+	@echo "Quick start:"
+	@echo "  make extract        Extract secrets from APK (needs dev/apk/base.apk)"
+	@echo "  make capture        Capture APIM key via mitmproxy (needs emulator)"
+	@echo "  make env            Generate .env file"
+	@echo "  make test           Test authentication"
+	@echo ""
+	@echo "Emulator tools:"
+	@echo "  make mitm-cert-install   Install mitmproxy CA cert as system cert"
+	@echo "  make frida-start    Start frida-server on emulator"
+	@echo "  make frida-status   Check frida connection"
+	@echo "  make bypass         Launch Kohler app with bypass"
+	@echo "  make proxy-on       Set Android to use Mac as proxy"
+	@echo "  make proxy-off      Remove Android proxy setting"
+	@echo ""
+	@echo "Other:"
+	@echo "  make install        Install required tools"
 	@echo "  make clean          Remove generated files"
 	@echo ""
-	@echo "Frida (for emulator):"
-	@echo "  make frida-start    Start frida-server on emulator (requires adb root)"
-	@echo "  make frida-stop     Stop frida-server on emulator"
-	@echo "  make frida-status   Check frida connection status"
-	@echo "  make bypass         Launch Kohler app with root/SSL bypass"
-	@echo ""
-	@echo "The APIM key must be captured via mitmproxy + Frida (APK key is outdated)."
-	@echo "See SETUP.md for detailed step-by-step instructions."
+	@echo "See SETUP.md for detailed instructions."
 
 # =============================================================================
 # Step 1: Install Tools
@@ -97,7 +101,7 @@ extract: $(BUILD_DIR) $(SECRETS_FILE)
 	@echo "Next step: make proxy"
 
 $(BUILD_DIR):
-	@mkdir -p $(BUILD_DIR) $(APK_DIR)
+	@mkdir -p $(BUILD_DIR)
 
 $(SECRETS_FILE): $(BUILD_DIR)
 	@echo ""
@@ -108,77 +112,58 @@ $(SECRETS_FILE): $(BUILD_DIR)
 	@if [ ! -f "$(APK_DIR)/base.apk" ]; then \
 		echo "ERROR: APK not found at $(APK_DIR)/base.apk"; \
 		echo ""; \
-		echo "You need to get the Kohler Konnect APK. Options:"; \
-		echo ""; \
-		echo "Option A - From your Android device:"; \
-		echo "  1. Install 'Kohler Konnect' from Play Store on your device"; \
-		echo "  2. Connect device via USB with debugging enabled"; \
-		echo "  3. Run: adb shell pm path com.kohler.hermoth"; \
-		echo "  4. Run: adb pull <path-from-above> $(APK_DIR)/base.apk"; \
-		echo ""; \
-		echo "Option B - From APK mirror site:"; \
-		echo "  1. Download from apkpure.com or apkmirror.com"; \
-		echo "  2. Search for 'Kohler Konnect'"; \
-		echo "  3. Save as $(APK_DIR)/base.apk"; \
+		echo "Get the APK from your Android device or emulator:"; \
+		echo "  1. Install 'Kohler Konnect' from Play Store"; \
+		echo "  2. Run: adb shell pm path com.kohler.hermoth"; \
+		echo "  3. Run: adb pull <path>/base.apk $(APK_DIR)/base.apk"; \
 		echo ""; \
 		exit 1; \
 	fi
 	@echo "Decompiling APK with jadx..."
-	@jadx --quiet -d $(APK_DIR)/decompiled $(APK_DIR)/base.apk 2>/dev/null || true
+	@jadx --quiet -d $(DECOMPILED_DIR) $(APK_DIR)/base.apk 2>/dev/null || true
 	@echo "Searching for secrets..."
-	@python3 $(SCRIPTS_DIR)/extract_secrets_from_apk.py $(APK_DIR)/decompiled > $(SECRETS_FILE)
+	@python3 $(SCRIPTS_DIR)/extract_secrets_from_apk.py $(DECOMPILED_DIR) > $(SECRETS_FILE)
 	@echo "Done!"
 
 # =============================================================================
 # Step 3: Capture APIM Key via mitmproxy
 # =============================================================================
 
-proxy:
+capture:
 	@echo ""
 	@echo "=========================================="
-	@echo "Starting mitmproxy"
+	@echo "Capture APIM Key"
 	@echo "=========================================="
 	@echo ""
-	@echo "This will capture the APIM subscription key from the Kohler app."
+	@echo "This will capture the APIM key by running mitmproxy + Frida."
 	@echo ""
-	@echo "BEFORE YOU CONTINUE, you must:"
+	@echo "Prerequisites (one-time setup):"
+	@echo "  1. Genymotion emulator running with Kohler app installed"
+	@echo "  2. Frida server running: make frida-start"
+	@echo "  3. Mitmproxy CA cert installed as system cert (see SETUP.md)"
 	@echo ""
-	@echo "1. Have an Android emulator running (Genymotion recommended)"
-	@echo "   OR a physical Android device on the same WiFi network"
-	@echo ""
-	@echo "2. Configure the Android device to use this Mac as a proxy:"
-	@echo "   - Go to: Settings > WiFi > (tap your network) > Advanced > Proxy"
-	@echo "   - Set Proxy to: Manual"
-	@echo "   - Proxy hostname: $$(ipconfig getifaddr en0 || echo YOUR_MAC_IP)"
-	@echo "   - Proxy port: 8080"
-	@echo "   - Save"
-	@echo ""
-	@echo "3. Install mitmproxy CA certificate on Android:"
-	@echo "   - Open Chrome on Android"
-	@echo "   - Go to: http://mitm.it"
-	@echo "   - Tap 'Android' to download certificate"
-	@echo "   - Go to: Settings > Security > Install from storage"
-	@echo "   - Select the downloaded certificate"
-	@echo ""
-	@echo "4. Install Kohler Konnect app on Android"
-	@echo ""
-	@echo "Press ENTER when ready, or Ctrl+C to cancel..."
+	@echo "Press ENTER to start, or Ctrl+C to cancel..."
 	@read
 	@echo ""
-	@echo "Starting mitmproxy on port 8080..."
-	@echo "A web interface will open at http://localhost:8081"
+	@echo "Step 1: Setting Android proxy..."
+	@$(ADB) shell settings put global http_proxy $$(ipconfig getifaddr en0):8080
 	@echo ""
-	@echo "NOW DO THIS ON ANDROID:"
-	@echo "  1. Open Kohler Konnect app"
-	@echo "  2. Log in with your Kohler account"
-	@echo "  3. Navigate around (view devices, etc.)"
+	@echo "Step 2: Starting mitmproxy (this terminal)..."
+	@echo "Step 3: In ANOTHER terminal, run: make bypass"
+	@echo "Step 4: Log in to the app and tap around"
 	@echo ""
-	@echo "Watch for requests to 'api-kohler-us.kohler.io'"
-	@echo "Look for the header: Ocp-Apim-Subscription-Key"
+	@echo "When you see 'FOUND APIM KEY', press Ctrl+C here."
 	@echo ""
-	@echo "Press Ctrl+C when done capturing."
+	@mitmweb --listen-port 8080 --web-port 8081 -s $(SCRIPTS_DIR)/capture_apim_key.py || true
 	@echo ""
-	@mitmweb --listen-port 8080 --web-port 8081 -s $(SCRIPTS_DIR)/capture_apim_key.py
+	@echo "Cleaning up proxy..."
+	@$(ADB) shell settings delete global http_proxy
+	@echo "Done!"
+
+proxy:
+	@echo "Use 'make capture' instead - it handles proxy setup automatically."
+	@echo ""
+	@$(MAKE) capture
 
 # =============================================================================
 # Step 4: Generate .env File
@@ -223,24 +208,77 @@ clean:
 
 frida-start:
 	@echo "Starting frida-server on emulator..."
-	@adb root >/dev/null 2>&1 || true
+	@$(ADB) root >/dev/null 2>&1 || true
 	@sleep 1
-	@adb shell "pkill -9 frida-server 2>/dev/null; /data/local/tmp/frida-server &" &
+	@$(ADB) shell "pkill -9 frida-server 2>/dev/null; /data/local/tmp/frida-server &" &
 	@sleep 2
 	@echo "Checking frida connection..."
 	@frida-ps -U >/dev/null 2>&1 && echo "Frida server running!" || echo "ERROR: Could not connect to frida-server"
 
 frida-stop:
 	@echo "Stopping frida-server..."
-	@adb shell pkill -9 frida-server 2>/dev/null || true
+	@$(ADB) shell pkill -9 frida-server 2>/dev/null || true
 	@echo "Done"
+
+FRIDA := $(shell which frida 2>/dev/null || echo ~/Library/Python/3.9/bin/frida)
+FRIDA_PS := $(shell which frida-ps 2>/dev/null || echo ~/Library/Python/3.9/bin/frida-ps)
 
 frida-status:
 	@echo "Checking frida connection..."
-	@frida-ps -U 2>&1 | head -5 || echo "ERROR: Frida not connected"
+	@$(FRIDA_PS) -U 2>&1 | head -5 || echo "ERROR: Frida not connected"
 
 bypass:
 	@echo "Launching Kohler app with bypass script..."
 	@echo "After the app launches, proceed through the location screen and log in."
 	@echo ""
-	@frida -U -f com.kohler.hermoth -l scripts/frida_ssl_bypass.js
+	@$(FRIDA) -U -f com.kohler.hermoth -l scripts/frida_bypass.js
+
+# =============================================================================
+# Android Proxy Management
+# =============================================================================
+
+MAC_IP := $(shell ipconfig getifaddr en0 2>/dev/null || echo "192.168.1.100")
+ADB := $(shell which adb 2>/dev/null || echo /Applications/Genymotion.app/Contents/MacOS/tools/adb)
+
+proxy-on:
+	@echo "Setting Android proxy to $(MAC_IP):8080..."
+	@$(ADB) shell settings put global http_proxy $(MAC_IP):8080
+	@echo "Proxy enabled. Run 'make proxy-off' when done."
+
+proxy-off:
+	@echo "Removing Android proxy..."
+	@$(ADB) shell settings delete global http_proxy
+	@echo "Proxy disabled."
+
+proxy-status:
+	@echo "Current Android proxy setting:"
+	@$(ADB) shell settings get global http_proxy || echo "(not set)"
+
+# =============================================================================
+# Mitmproxy CA Certificate Installation
+# =============================================================================
+
+MITMPROXY_CERT := $(HOME)/.mitmproxy/mitmproxy-ca-cert.cer
+
+mitm-cert-install:
+	@echo "Installing mitmproxy CA certificate as system cert..."
+	@if [ ! -f "$(MITMPROXY_CERT)" ]; then \
+		echo "ERROR: mitmproxy cert not found at $(MITMPROXY_CERT)"; \
+		echo "Run mitmproxy once to generate the cert: mitmproxy --help"; \
+		exit 1; \
+	fi
+	@HASH=$$(openssl x509 -inform PEM -subject_hash_old -in "$(MITMPROXY_CERT)" | head -1) && \
+	echo "Cert hash: $$HASH" && \
+	if $(ADB) shell "ls /system/etc/security/cacerts/$$HASH.0" >/dev/null 2>&1; then \
+		echo "Certificate already installed!"; \
+	else \
+		echo "Pushing certificate..." && \
+		cp "$(MITMPROXY_CERT)" "/tmp/$$HASH.0" && \
+		$(ADB) push "/tmp/$$HASH.0" /sdcard/ && \
+		$(ADB) shell "su 0 mount -o rw,remount /system 2>/dev/null || true" && \
+		$(ADB) shell "su 0 cp /sdcard/$$HASH.0 /system/etc/security/cacerts/" && \
+		$(ADB) shell "su 0 chmod 644 /system/etc/security/cacerts/$$HASH.0" && \
+		$(ADB) shell "su 0 mount -o ro,remount /system 2>/dev/null || true" && \
+		echo "Certificate installed successfully!"; \
+	fi && \
+	echo "Verified: $$($(ADB) shell ls -la /system/etc/security/cacerts/$$HASH.0)"
