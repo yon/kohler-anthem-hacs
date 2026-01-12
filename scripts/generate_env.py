@@ -109,22 +109,22 @@ def main():
     print()
 
     # =========================================================================
-    # APIM Key (extracted from APK)
+    # APIM Key (captured via Frida from Firebase Remote Config)
     # =========================================================================
     print("-" * 60)
     print("STEP 2: APIM Subscription Key")
     print("-" * 60)
     print()
+    print("  The APIM key is captured via Frida when you log into the app.")
+    print("  (It's loaded from Firebase Remote Config, not hardcoded in APK.)")
+    print()
 
-    if extracted.get("apim_key"):
-        print(f"  Found APIM_KEY from APK extraction: {extracted['apim_key'][:8]}...")
-        secrets["apim_key"] = extracted["apim_key"]
-    elif captured.get("apim_key"):
-        print(f"  Found APIM_KEY from mitmproxy capture: {captured['apim_key'][:8]}...")
+    if captured.get("apim_key"):
+        print(f"  Found APIM_KEY from Frida capture: {captured['apim_key'][:8]}...")
         secrets["apim_key"] = captured["apim_key"]
     else:
         print("  APIM_KEY not found.")
-        print("  Run 'make extract' to extract it from APK, or enter manually:")
+        print("  Run 'make bypass' and log in to capture it, or enter manually:")
         print()
         secrets["apim_key"] = prompt("  KOHLER_APIM_KEY")
 
@@ -185,7 +185,7 @@ export KOHLER_API_RESOURCE="{secrets['api_resource']}"
 export KOHLER_USERNAME="{secrets['username']}"
 export KOHLER_PASSWORD="{secrets['password']}"
 
-# Azure APIM Subscription Key (captured via mitmproxy)
+# Azure APIM Subscription Key (must be captured via mitmproxy + Frida)
 export KOHLER_APIM_KEY="{secrets['apim_key']}"
 
 # Device Info (discovered via API)

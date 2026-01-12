@@ -35,8 +35,8 @@ POST /platform/api/v1/commands/gcs/controlpresetorexperience
 
 ```bash
 make install   # Install tools (Homebrew, Python, Frida, etc.)
-make extract   # Extract secrets from Kohler Konnect APK
-make proxy     # Capture APIM key via mitmproxy
+make extract   # Extract client_id/api_resource from APK
+make bypass    # Launch app with Frida (captures APIM key)
 make env       # Generate .env file interactively
 make test      # Test authentication and device discovery
 ```
@@ -54,7 +54,7 @@ Copy `kohler.env.example` to `.env` and fill in:
 | Variable | Source | Changes |
 |----------|--------|---------|
 | `KOHLER_CLIENT_ID` | APK | Never |
-| `KOHLER_APIM_KEY` | APK/mitmproxy | Never |
+| `KOHLER_APIM_KEY` | Frida capture | Periodically (fetched from Firebase) |
 | `KOHLER_USERNAME` | Your account | Never |
 | `KOHLER_PASSWORD` | Your account | Never |
 | `KOHLER_DEVICE_ID` | Device discovery | Per device |

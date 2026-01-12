@@ -269,6 +269,65 @@ if (Java.available) {
             console.log("[+] ProxyInfo bypass installed");
         } catch(e) {}
 
+        // =============== APIM KEY CAPTURE ===============
+        // Capture apim_key when stored in SharedPreferences
+        try {
+            var SharedPreferencesEditor = Java.use("android.content.SharedPreferences$Editor");
+            var originalPutString = SharedPreferencesEditor.putString;
+            SharedPreferencesEditor.putString.implementation = function(key, value) {
+                if (key === "apim_key" && value && value.length > 0) {
+                    console.log("");
+                    console.log("============================================================");
+                    console.log("CAPTURED APIM SUBSCRIPTION KEY!");
+                    console.log("============================================================");
+                    console.log("Key: " + value);
+                    console.log("Stored in SharedPreferences as: " + key);
+                    console.log("============================================================");
+                    console.log("");
+                }
+                return originalPutString.call(this, key, value);
+            };
+            console.log("[+] SharedPreferences APIM key capture installed");
+        } catch(e) {
+            console.log("[-] SharedPreferences capture failed: " + e);
+        }
+
+        // Also hook the pt.a class method e() for SecurePreferences
+        function installSecurePrefsHook() {
+            try {
+                var SecurePrefs = Java.use("pt.a");
+                var originalE = SecurePrefs.e;
+                SecurePrefs.e.implementation = function(key, value) {
+                    if (key === "apim_key" && value && value.length > 0) {
+                        console.log("");
+                        console.log("============================================================");
+                        console.log("CAPTURED APIM SUBSCRIPTION KEY (SecurePrefs)!");
+                        console.log("============================================================");
+                        console.log("Key: " + value);
+                        console.log("============================================================");
+                        console.log("");
+                    }
+                    return originalE.call(this, key, value);
+                };
+                console.log("[+] SecurePreferences APIM key capture installed");
+                return true;
+            } catch(e) {
+                return false;
+            }
+        }
+
+        // Try immediately, then schedule retries for SecurePrefs
+        if (!installSecurePrefsHook()) {
+            var hookInterval = setInterval(function() {
+                Java.perform(function() {
+                    if (installSecurePrefsHook()) {
+                        clearInterval(hookInterval);
+                    }
+                });
+            }, 1000);
+            console.log("[*] SecurePreferences hook scheduled (waiting for class to load)");
+        }
+
         console.log("[*] All bypasses loaded");
     });
 }

@@ -2,8 +2,8 @@
 #
 # Usage:
 #   make install    - Install all required tools
-#   make extract    - Extract secrets from APK
-#   make proxy      - Start mitmproxy for traffic capture
+#   make extract    - Extract secrets from APK (client_id, api_resource)
+#   make bypass     - Launch app with Frida bypass (captures APIM key automatically)
 #   make env        - Generate .env file from captured secrets
 #   make test       - Test the configuration
 #   make clean      - Remove generated files
@@ -25,18 +25,14 @@ help:
 	@echo "Kohler Anthem HACS Integration Setup"
 	@echo ""
 	@echo "Quick start:"
-	@echo "  make extract        Extract secrets from APK (needs dev/apk/base.apk)"
-	@echo "  make capture        Capture APIM key via mitmproxy (needs emulator)"
+	@echo "  make extract        Extract client_id/api_resource from APK"
+	@echo "  make bypass         Launch app with Frida (captures APIM key)"
 	@echo "  make env            Generate .env file"
 	@echo "  make test           Test authentication"
 	@echo ""
 	@echo "Emulator tools:"
-	@echo "  make mitm-cert-install   Install mitmproxy CA cert as system cert"
 	@echo "  make frida-start    Start frida-server on emulator"
 	@echo "  make frida-status   Check frida connection"
-	@echo "  make bypass         Launch Kohler app with bypass"
-	@echo "  make proxy-on       Set Android to use Mac as proxy"
-	@echo "  make proxy-off      Remove Android proxy setting"
 	@echo ""
 	@echo "Other:"
 	@echo "  make install        Install required tools"
@@ -98,7 +94,7 @@ extract: $(BUILD_DIR) $(SECRETS_FILE)
 	@echo "=========================================="
 	@cat $(SECRETS_FILE) | jq .
 	@echo ""
-	@echo "Next step: make proxy"
+	@echo "Next step: make bypass (to capture APIM key via Frida)"
 
 $(BUILD_DIR):
 	@mkdir -p $(BUILD_DIR)
@@ -126,44 +122,29 @@ $(SECRETS_FILE): $(BUILD_DIR)
 	@echo "Done!"
 
 # =============================================================================
-# Step 3: Capture APIM Key via mitmproxy
+# Step 3: Capture APIM Key via Frida
 # =============================================================================
+# The APIM key is NOT hardcoded in the APK - it's loaded dynamically from
+# Firebase Remote Config and stored in SecurePreferences. The Frida bypass
+# script hooks SecurePreferences to capture the key when the app stores it.
 
 capture:
 	@echo ""
 	@echo "=========================================="
-	@echo "Capture APIM Key"
+	@echo "Capture APIM Key via Frida"
 	@echo "=========================================="
 	@echo ""
-	@echo "This will capture the APIM key by running mitmproxy + Frida."
+	@echo "The APIM key is captured automatically when you run 'make bypass'."
+	@echo "Just log in to the app - the key will be saved to .build/captured_apim_key.json"
 	@echo ""
-	@echo "Prerequisites (one-time setup):"
-	@echo "  1. Genymotion emulator running with Kohler app installed"
-	@echo "  2. Frida server running: make frida-start"
-	@echo "  3. Mitmproxy CA cert installed as system cert (see SETUP.md)"
-	@echo ""
-	@echo "Press ENTER to start, or Ctrl+C to cancel..."
-	@read
-	@echo ""
-	@echo "Step 1: Setting Android proxy..."
-	@$(ADB) shell settings put global http_proxy $$(ipconfig getifaddr en0):8080
-	@echo ""
-	@echo "Step 2: Starting mitmproxy (this terminal)..."
-	@echo "Step 3: In ANOTHER terminal, run: make bypass"
-	@echo "Step 4: Log in to the app and tap around"
-	@echo ""
-	@echo "When you see 'FOUND APIM KEY', press Ctrl+C here."
-	@echo ""
-	@mitmweb --listen-port 8080 --web-port 8081 -s $(SCRIPTS_DIR)/capture_apim_key.py || true
-	@echo ""
-	@echo "Cleaning up proxy..."
-	@$(ADB) shell settings delete global http_proxy
-	@echo "Done!"
+	@echo "Running 'make bypass' now..."
+	@$(MAKE) bypass
 
 proxy:
-	@echo "Use 'make capture' instead - it handles proxy setup automatically."
+	@echo "Note: mitmproxy is no longer needed for APIM key capture."
+	@echo "The Frida bypass script captures it directly from SecurePreferences."
 	@echo ""
-	@$(MAKE) capture
+	@echo "Run 'make bypass' instead."
 
 # =============================================================================
 # Step 4: Generate .env File
@@ -228,10 +209,7 @@ frida-status:
 	@$(FRIDA_PS) -U 2>&1 | head -5 || echo "ERROR: Frida not connected"
 
 bypass:
-	@echo "Launching Kohler app with bypass script..."
-	@echo "After the app launches, proceed through the location screen and log in."
-	@echo ""
-	@$(FRIDA) -U -f com.kohler.hermoth -l scripts/frida_bypass.js
+	@python3 $(SCRIPTS_DIR)/frida_capture_apim.py
 
 # =============================================================================
 # Android Proxy Management

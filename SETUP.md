@@ -18,13 +18,13 @@ By the end of this guide, you'll have a `.env` file with these secrets:
 |--------|-----------|---------------------|
 | `KOHLER_CLIENT_ID` | OAuth client ID | Extracted from APK |
 | `KOHLER_API_RESOURCE` | OAuth API scope | Extracted from APK |
-| `KOHLER_APIM_KEY` | API subscription key | Captured via mitmproxy + Frida |
+| `KOHLER_APIM_KEY` | API subscription key | Captured via Frida (from Firebase Remote Config) |
 | `KOHLER_USERNAME` | Your email | You provide |
 | `KOHLER_PASSWORD` | Your password | You provide |
 | `KOHLER_DEVICE_ID` | Your shower's ID | Discovered via API |
 | `KOHLER_TENANT_ID` | Your customer ID | Discovered via API |
 
-**Important:** The APIM key in the APK is outdated and doesn't work. You **MUST** capture the real key using mitmproxy + Frida (Steps 4-5). The APK extraction only gets client_id and api_resource.
+**Important:** The APIM key is NOT hardcoded in the APK - it's loaded dynamically from Firebase Remote Config. Our Frida script captures it automatically when you log into the app (Step 4).
 
 ---
 
@@ -134,7 +134,6 @@ make extract
 This decompiles the APK and searches for:
 - OAuth client ID
 - API resource ID
-- APIM subscription key (global, same for all users)
 
 **Expected output:**
 ```
@@ -144,6 +143,7 @@ APK Extraction
 
 Decompiling APK with jadx...
 Searching for secrets...
+Note: APIM key must be captured via mitmproxy + Frida (make capture)
 Done!
 
 ==========================================
@@ -151,59 +151,32 @@ Secrets extracted!
 ==========================================
 {
   "client_id": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
-  "api_resource": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
-  "apim_key": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+  "api_resource": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
 }
+
+Next step: make bypass (to capture APIM key via Frida)
 ```
 
-**Note:** The APK contains an outdated APIM key that doesn't work. You still need to capture the real key using mitmproxy (Steps 4-5).
-
 If client_id or api_resource extraction fails:
-1. Try manually searching the `.build/apk/decompiled` folder
+1. Try manually searching the `.build/decompiled` folder
 2. Look for `msal_config.json` or `auth_config_release.json`
 
 ---
 
-## Step 4: Set Up Android for Traffic Capture
+## Step 4: Capture APIM Key via Frida
 
-> **Required:** The APK contains an outdated APIM key. You must capture the real key via mitmproxy.
+The APIM key is NOT hardcoded in the APK - it's loaded dynamically from Firebase Remote Config. Our Frida bypass script captures it automatically when the app stores it in SecurePreferences.
 
-You'll capture the APIM key by intercepting traffic from the Kohler app. This requires:
-- Mitmproxy running on your Mac
-- Android **emulator** (Genymotion) - physical devices won't work
-- Frida with our bypass script
-- Mitmproxy's CA certificate installed on the emulator
-
-### Why This Is Complicated
+### Why This Is Needed
 
 The Kohler Konnect app has **aggressive protection** that must be bypassed:
 
-1. **SSL Certificate Pinning** - The app refuses to trust any certificate except Kohler's, which blocks mitmproxy from seeing traffic.
+1. **SSL Certificate Pinning** - The app refuses to trust certificates except Kohler's
+2. **Root Detection** - Uses RootBeer-based detection with 10+ checks
+3. **Emulator Detection** - Detects and refuses to run on emulators
+4. **Proxy Detection** - Detects HTTP proxies and refuses to make API calls
 
-2. **Root Detection** - The app uses RootBeer-based detection with 10+ checks:
-   - Checks for `su` binaries in multiple locations
-   - Looks for Magisk, SuperSU, Xposed
-   - Checks for root management apps
-   - Verifies build tags aren't "test-keys"
-   - Native library checks
-
-3. **Emulator Detection** - The app detects and refuses to run on emulators:
-   - Checks Build.HARDWARE, Build.PRODUCT, Build.MODEL
-   - Checks SystemProperties for qemu/goldfish/genymotion
-   - Checks TelephonyManager for missing carrier info
-
-**Our Frida script (`scripts/frida_ssl_bypass.js`) bypasses ALL THREE layers:**
-- Spoofs Build properties to appear as a Samsung Galaxy S21
-- Hooks the obfuscated `Is.b` class to defeat all root checks
-- Hooks File.exists/canRead/etc. to hide root paths
-- Installs a permissive TrustManager to bypass SSL pinning
-
-**Why Genymotion?** Frida requires root access to inject into apps. Options:
-- **Genymotion emulator** (recommended) - Already rooted, easy to push frida-server
-- **Physical rooted device** - Works but harder to set up
-- **Physical non-rooted device** - Won't work (can't run Frida)
-
-We recommend **Genymotion** (free for personal use): https://www.genymotion.com/download/
+**Our Frida script (`scripts/frida_bypass.js`) bypasses ALL FOUR layers** and also hooks SecurePreferences to capture the APIM key when the app stores it.
 
 ### 4a. Install and Set Up Genymotion
 
@@ -217,12 +190,6 @@ We recommend **Genymotion** (free for personal use): https://www.genymotion.com/
 
 5. **Install Frida server on the emulator:**
 
-   First, install Frida tools if you haven't:
-   ```bash
-   make install-frida
-   ```
-
-   Then download and push frida-server to the emulator:
    ```bash
    # Get the emulator's architecture
    adb shell getprop ro.product.cpu.abi
@@ -239,186 +206,50 @@ We recommend **Genymotion** (free for personal use): https://www.genymotion.com/
 
 6. **Install the Kohler Konnect APK:**
    ```bash
-   adb install .build/apk/base.apk
-   # Or if you have split APKs:
-   adb install-multiple apk/*.apk
+   adb install dev/apk/base.apk
    ```
 
-### 4b. Find Your Mac's IP Address
+### 4b. Start Frida Server
+
+```bash
+# Get root and start frida-server
+adb root
+adb shell /data/local/tmp/frida-server &
+
+# Verify it's running
+make frida-status
+```
+
+### 4c. Capture the APIM Key
 
 Run:
 ```bash
-ipconfig getifaddr en0
+make bypass
 ```
 
-Note this IP address (e.g., `192.168.1.100`). You'll need it for the proxy settings.
-
-### 4b. Configure Android Proxy
-
-**On your Android phone/emulator:**
-
-1. Go to: **Settings** → **Network & Internet** → **Wi-Fi**
-2. Tap and hold on your connected WiFi network
-3. Tap **Modify network** (or the gear icon)
-4. Tap **Advanced options**
-5. Change "Proxy" from "None" to **Manual**
-6. Enter:
-   - **Proxy hostname:** `[Your Mac's IP from step 4a]`
-   - **Proxy port:** `8080`
-7. Tap **Save**
-
-### 4c. Install Mitmproxy Certificate on Android
-
-Android apps targeting API 24+ (Android 7+) only trust system certificates, not user-installed ones. For the Kohler app, you need to install the mitmproxy CA as a **system certificate**.
-
-**Step 1: Get the mitmproxy CA certificate**
-
-On your Mac, run mitmproxy once to generate the CA:
-```bash
-mitmproxy --listen-port 8080
-# Press 'q' then 'y' to quit after it starts
-```
-
-The CA cert is at: `~/.mitmproxy/mitmproxy-ca-cert.pem`
-
-**Step 2: Convert and push to emulator as system cert**
-
-```bash
-# Convert to Android format (hash-named)
-CERT_HASH=$(openssl x509 -inform PEM -subject_hash_old -in ~/.mitmproxy/mitmproxy-ca-cert.pem | head -1)
-cp ~/.mitmproxy/mitmproxy-ca-cert.pem ${CERT_HASH}.0
-
-# Push to emulator's system certs
-adb root
-adb remount
-adb push ${CERT_HASH}.0 /system/etc/security/cacerts/
-adb shell chmod 644 /system/etc/security/cacerts/${CERT_HASH}.0
-
-# Clean up local file
-rm ${CERT_HASH}.0
-```
-
-**Step 3: Verify installation**
-
-```bash
-adb shell ls -la /system/etc/security/cacerts/ | grep -v "2009-01-01"
-```
-
-You should see your newly added certificate with today's date.
-
-**Alternative (simpler but less reliable):** Install as user cert via browser:
-1. Open Chrome on Android, go to `http://mitm.it` (while mitmproxy runs)
-2. Download the Android certificate
-3. This may not work for all apps due to network security config
-
----
-
-## Step 5: Capture the APIM Key
-
-This captures the real API subscription key by bypassing SSL pinning with Frida and intercepting traffic with mitmproxy.
-
-### 5a. Start Frida Server on Emulator
-
-**Important:** Frida-server needs root access on Genymotion. Open a terminal and run:
-```bash
-# First, get root access
-adb root
-
-# Wait a moment, then start frida-server
-adb shell /data/local/tmp/frida-server &
-```
-
-Verify it's running:
-```bash
-frida-ps -U | head -5
-```
-
-You should see a list of processes. If you see "unable to find process", run `adb root` again.
-
-**Note:** You must restart frida-server after every emulator reboot.
-
-### 5b. Start Mitmproxy
-
-In a **new terminal**, run:
-```bash
-make proxy
-```
-
-This starts mitmproxy on port 8080. Press **ENTER** when prompted.
-
-### 5c. Launch Kohler App with Frida Bypass
-
-In a **third terminal**, launch the app with our Frida bypass script:
-```bash
-frida -U -f com.kohler.hermoth -l scripts/frida_ssl_bypass.js
-```
-
-This:
-1. Spawns the Kohler Konnect app
-2. Injects our bypass script which:
-   - Spoofs device as Samsung Galaxy S21 (defeats emulator detection)
-   - Hooks `Is.b` class methods (defeats root detection)
-   - Hides root-related file paths (defeats file-based root checks)
-   - Installs permissive TrustManager (defeats SSL pinning)
-3. Allows the app to run and mitmproxy to see the traffic
-
-**Watch the Frida terminal** - you should see bypass messages like:
-```
-[*] SSL Pinning + Root Detection + Emulator Detection Bypass loaded
-[+] Build properties spoofed to Samsung Galaxy S21
-[+] SystemProperties emulator bypass installed
-[+] TelephonyManager emulator bypass installed
-[+] Kohler Is.b root detection bypass installed
-[+] File.* bypass installed
-[+] TrustManager bypass installed
-[*] All bypasses loaded - try signing in now
-```
-
-If the app crashes or shows an error, check the Frida output for which bypass failed.
-
-### 5d. Log In and Capture
+This launches the Kohler app with our bypass script and captures the APIM key.
 
 **In the emulator:**
 
-1. The Kohler Konnect app should now be open
+1. Proceed through the location permission screen
 2. **Log in** with your Kohler account
-3. Navigate around:
-   - View your devices
-   - Tap on your shower
+3. Watch the terminal for:
 
-**Watch the mitmproxy terminal.** You should see output like:
 ```
-[Kohler] GET /devices/api/v1/device-management/customer-device/...
-         APIM Key: 429e...a493
-
 ============================================================
-FOUND APIM SUBSCRIPTION KEY!
+CAPTURED APIM SUBSCRIPTION KEY (SecurePrefs)!
 ============================================================
-
 Key: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-
-Saved to: .build/captured_apim_key.json
 ============================================================
+
+Saving APIM key to: .build/captured_apim_key.json
 ```
 
-### 5c. Stop Mitmproxy
-
-Once you see "FOUND APIM SUBSCRIPTION KEY!", press **Ctrl+C** to stop mitmproxy.
-
-### 5d. Remove Proxy from Android
-
-**Important!** Remove the proxy settings or your phone won't have internet:
-
-1. Go to: **Settings** → **Network & Internet** → **Wi-Fi**
-2. Tap and hold on your WiFi network
-3. Tap **Modify network**
-4. Tap **Advanced options**
-5. Change "Proxy" back to **None**
-6. Tap **Save**
+4. Once you see the key, press **Ctrl+C** to exit
 
 ---
 
-## Step 6: Generate Your .env File
+## Step 5: Generate Your .env File
 
 Run:
 ```bash
@@ -427,7 +258,7 @@ make env
 
 This interactive script will:
 1. Load secrets extracted from the APK (Step 3)
-2. Load the APIM key captured via mitmproxy (Step 5)
+2. Load the APIM key captured via Frida (Step 4)
 3. Ask for your Kohler account credentials
 4. Generate a `.env` file
 
@@ -448,7 +279,7 @@ STEP 1: APK Secrets
 STEP 2: APIM Subscription Key
 ------------------------------------------------------------
 
-  Found APIM_KEY from mitmproxy capture: 429e...
+  Found APIM_KEY from mitmproxy capture: xxxx...
 
 ------------------------------------------------------------
 STEP 3: Your Kohler Account Credentials
@@ -478,7 +309,7 @@ SUCCESS!
 
 ---
 
-## Step 7: Test Your Configuration
+## Step 6: Test Your Configuration
 
 Run:
 ```bash
@@ -530,7 +361,7 @@ nano .env
 
 ---
 
-## Step 8: Install in Home Assistant
+## Step 7: Install in Home Assistant
 
 1. Copy the `custom_components/kohler_anthem` folder to your Home Assistant's `custom_components` directory
 
@@ -557,12 +388,12 @@ nano .env
 - Make sure your shower is set up in the Kohler Konnect app
 - The device must be provisioned and online
 
-### Mitmproxy shows no Kohler traffic
+### APIM key not captured
 
-- Make sure you launched the app with Frida (Step 5c), not by tapping the app icon
-- Verify proxy settings on Android (Step 4b)
-- Make sure the mitmproxy certificate is installed (Step 4c)
+- Make sure you launched the app with `make bypass`, not by tapping the app icon
+- Log into the app (the key is captured after authentication)
 - Check Frida terminal shows all bypasses installed successfully
+- Look for `[+] SecurePreferences APIM key capture installed` in the output
 
 ### Kohler app crashes or shows "rooted device" error
 
@@ -570,18 +401,18 @@ The app detected root/emulator. Check the Frida terminal output:
 
 1. **Missing bypass messages** - The script didn't inject properly. Try:
    ```bash
-   frida -U -f com.kohler.hermoth -l scripts/frida_ssl_bypass.js --no-pause
+   frida -U -f com.kohler.hermoth -l scripts/frida_bypass.js --no-pause
    ```
 
-2. **"Is.b not found"** - Kohler updated their obfuscation. The root detection class name changed. Check `docs/REVERSE_ENGINEERING.md` for how to find the new class name.
+2. **"Is.b not found"** - Kohler updated their obfuscation. The root detection class name changed.
 
 3. **App shows "rooted device" error** - A root check wasn't bypassed. Look for `[-]` lines in Frida output showing which hook failed.
 
-4. **All bypasses show installed but still fails** - Make sure you see BOTH:
-   - `[+] Kohler Is.b root detection bypass installed`
-   - `[+] File.* bypass installed`
-
-   The app uses multiple detection methods. Both Is.b hooks AND File.* hooks are required.
+4. **All bypasses show installed but still fails** - Make sure you see ALL of:
+   - `[+] Is.b root detection bypass installed`
+   - `[+] File.* root path bypass installed`
+   - `[+] Build properties spoofed`
+   - `[+] Proxy detection bypasses installed`
 
 ### App shows "Request timeout" after bypasses load
 
@@ -621,18 +452,12 @@ adb shell /data/local/tmp/frida-server &
 frida-ps -U | head -5
 ```
 
-### Kohler app works but mitmproxy sees nothing
+### "APIM key not found" after running make bypass
 
-SSL pinning bypass may have failed:
-- Check for `[+] TrustManager bypass installed` in Frida output
-- Check for `[+] TrustManagerImpl bypass installed` in Frida output
-- If missing, the app may be using a different pinning method
-
-### "APIM key not found" after capturing traffic
-
-- Make sure you navigated around in the app (view devices, tap on shower)
-- The APIM key is in requests to `api-kohler-us.kohler.io`
-- Look for the header `Ocp-Apim-Subscription-Key` in mitmproxy
+The APIM key is stored in SecurePreferences after the app fetches it from Firebase Remote Config (usually during/after login). Make sure:
+- You completed the login process
+- You saw `[+] SecurePreferences APIM key capture installed` in the output
+- The app successfully loaded your devices (got past the login screen)
 
 ### APK extraction finds nothing
 
@@ -657,8 +482,8 @@ grep -r "msal" .build/apk/decompiled/
 
 ```bash
 make install   # Install tools
-make extract   # Extract secrets from APK
-make proxy     # Start mitmproxy to capture APIM key
+make extract   # Extract client_id/api_resource from APK
+make bypass    # Launch app with Frida (captures APIM key)
 make env       # Generate .env file
 make test      # Test configuration
 make clean     # Remove generated files
