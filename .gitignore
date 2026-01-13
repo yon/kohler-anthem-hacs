@@ -60,5 +60,15 @@ apk_extracted/
 # Build directory (APK extraction, captured secrets)
 .build/
 
-# Dev output (captured credentials, traffic logs with tokens)
-dev/output/
+# Dev directory (API development moved to kohler-anthem library repo)
+dev/
+
+# Docs directory (API docs moved to kohler-anthem library repo)
+docs/
+
+# Scripts not needed for HACS (moved to kohler-anthem library repo)
+scripts/capture_*.py
+scripts/test_*.py
+scripts/discover_*.py
+scripts/comprehensive_*.py
+scripts/requirements_test.txt
