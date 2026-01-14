@@ -137,12 +137,10 @@ VERSION := $(shell python3 -c "import json; print(json.load(open('custom_compone
 
 release:
 	@echo "Creating GitHub release v$(VERSION)..."
-	@if git rev-parse "v$(VERSION)" >/dev/null 2>&1; then \
-		echo "Tag v$(VERSION) already exists"; \
-	else \
-		git tag -a "v$(VERSION)" -m "Release v$(VERSION)"; \
-		git push origin "v$(VERSION)"; \
-	fi
+	@git tag -d "v$(VERSION)" 2>/dev/null || true
+	@git push origin --delete "v$(VERSION)" 2>/dev/null || true
+	@git tag -a "v$(VERSION)" -m "Release v$(VERSION)"
+	@git push origin "v$(VERSION)"
 	@gh release create "v$(VERSION)" \
 		--title "v$(VERSION)" \
 		--notes "Kohler Anthem HACS Integration v$(VERSION)" \
