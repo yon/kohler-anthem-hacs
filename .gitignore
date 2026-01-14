@@ -47,28 +47,4 @@ home-assistant_v2.db
 # Secrets
 .env
 *.env
-!kohler.env.example
 secrets.yaml
-
-# Captured traffic (contains tokens/credentials)
-scripts/captured_traffic/
-
-# APK files (large binaries)
-apk/
-apk_extracted/
-
-# Build directory (APK extraction, captured secrets)
-.build/
-
-# Dev directory (API development moved to kohler-anthem library repo)
-dev/
-
-# Docs directory (API docs moved to kohler-anthem library repo)
-docs/
-
-# Scripts not needed for HACS (moved to kohler-anthem library repo)
-scripts/capture_*.py
-scripts/test_*.py
-scripts/discover_*.py
-scripts/comprehensive_*.py
-scripts/requirements_test.txt

@@ -2,63 +2,18 @@
 
 Home Assistant custom integration for the Kohler Anthem Digital Shower system.
 
-## Status (2026-01-10)
+## Disclaimer
 
-| Feature | Status |
-|---------|--------|
-| Authentication (Azure AD B2C) | ✅ Working |
-| Device Discovery | ✅ Working |
-| Warmup Command | ✅ Working |
-| Start/Stop Presets | ✅ Working |
-| Direct Valve Control | ❌ API returns 404 |
-| Real-time Status (MQTT) | ❌ Needs IoT Hub connection string |
+This integration uses the unofficial [kohler-anthem](https://pypi.org/project/kohler-anthem/) Python library, which was reverse-engineered from the Kohler Konnect mobile app. It is not affiliated with, endorsed by, or supported by Kohler Co. Use at your own risk.
 
-## Working API Commands
+## Features
 
-```bash
-# Warmup - preheats water
-POST /platform/api/v1/commands/gcs/warmup
-{"deviceId": "...", "sku": "GCS", "tenantId": "..."}
-
-# Start preset (1-5)
-POST /platform/api/v1/commands/gcs/controlpresetorexperience
-{"deviceId": "...", "sku": "GCS", "tenantId": "...", "presetOrExperienceId": "1"}
-
-# Stop shower
-POST /platform/api/v1/commands/gcs/controlpresetorexperience
-{"deviceId": "...", "sku": "GCS", "tenantId": "...", "presetOrExperienceId": "0"}
-```
-
-## Setup
-
-**First time?** Follow the complete setup guide: **[SETUP.md](SETUP.md)**
-
-```bash
-make install   # Install tools (Homebrew, Python, Frida, etc.)
-make extract   # Extract client_id/api_resource from APK
-make bypass    # Launch app with Frida (captures APIM key)
-make env       # Generate .env file interactively
-make test      # Test authentication and device discovery
-```
-
-## Architecture
-
-- **Authentication**: Azure AD B2C (ROPC flow)
-- **API Base**: `https://api-kohler-us.kohler.io`
-- **Device Communication**: REST API for commands, MQTT for status (not yet implemented)
-
-## Configuration
-
-Copy `kohler.env.example` to `.env` and fill in:
-
-| Variable | Source | Changes |
-|----------|--------|---------|
-| `KOHLER_CLIENT_ID` | APK | Never |
-| `KOHLER_APIM_KEY` | Frida capture | Periodically (fetched from Firebase) |
-| `KOHLER_USERNAME` | Your account | Never |
-| `KOHLER_PASSWORD` | Your account | Never |
-| `KOHLER_DEVICE_ID` | Device discovery | Per device |
-| `KOHLER_TENANT_ID` | JWT claims | Per user |
+- **Presets**: Start/stop shower presets (1-5) via switches
+- **Warmup**: Preheat water before starting
+- **Outlet Control**: Individual control of showerheads, handhelds, body sprays, and steam
+- **Temperature**: Set temperature for each outlet (number entities)
+- **Spray Patterns**: Select spray intensity patterns (select entities)
+- **Status**: Real-time device state via sensors and binary sensors
 
 ## Installation (HACS)
 
@@ -67,17 +22,14 @@ Copy `kohler.env.example` to `.env` and fill in:
 3. Install and restart Home Assistant
 4. Add integration via Settings → Devices & Services
 
+## Configuration
+
+The integration requires credentials extracted from the Kohler Konnect app. See the [kohler-anthem library](https://github.com/yon/kohler-anthem) for setup instructions.
+
 ## Known Limitations
 
-- **No direct temperature control**: The `writesolostatus` endpoint returns 404. Temperature can only be set via presets.
-- **No real-time status**: IoT Hub connection string is not returned by the REST API. Status updates require MQTT which needs further reverse engineering.
-- **Cloud-dependent**: No local API exists.
-
-## Documentation
-
-See `docs/` for:
-- `API.md` - Complete API reference (authentication, endpoints, payloads)
-- `REVERSE_ENGINEERING.md` - How the API was discovered (APK analysis, Frida, mitmproxy)
+- **Cloud-dependent**: No local API exists
+- **Reverse-engineered**: May break if Kohler changes their API
 
 ## License
 

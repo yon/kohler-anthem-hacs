@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(gpgconf:*)",
+      "WebFetch(domain:pypi.org)"
+    ]
+  }
+}
